@@ -47,29 +47,47 @@ def main():
   np.random.seed(args.seed)
   torch.cuda.set_device(args.gpu)
   cudnn.benchmark = True
+  """
+  It enables benchmark mode in cudnn.benchmark mode 
+  is good whenever your input sizes for your network do not vary. 
+  This way, cudnn will look for the optimal set of algorithms for 
+  that particular configuration (which takes some time). 
+  This usually leads to faster runtime.But if your input 
+  sizes changes at each iteration, then cudnn will benchmark 
+  every time a new size appears, possibly leading to worse runtime performances.
+  """
   torch.manual_seed(args.seed)
   cudnn.enabled=True
+  # A bool that controls whether cuDNN is enabled.
   torch.cuda.manual_seed(args.seed)
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
-
+  
+  print("done1")
   genotype = eval("genotypes.%s" % args.arch)
+  print("done2")
   model = Network(args.init_channels, CIFAR_CLASSES, args.layers, args.auxiliary, genotype)
+  # Network is a class that defines the network
   model = model.cuda()
+  print("done3")
   utils.load(model, args.model_path)
-
+  # load_state_dict
+  print("done4")
+  
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
 
   _, test_transform = utils._data_transforms_cifar10(args)
+  # data science stuff
   test_data = dset.CIFAR10(root=args.data, train=False, download=True, transform=test_transform)
 
   test_queue = torch.utils.data.DataLoader(
       test_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=2)
 
   model.drop_path_prob = args.drop_path_prob
+  print("begin infer")
   test_acc, test_obj = infer(test_queue, model, criterion)
   logging.info('test_acc %f', test_acc)
 
@@ -79,19 +97,29 @@ def infer(test_queue, model, criterion):
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
   model.eval()
-
+  
+  print(type(test_queue))
   for step, (input, target) in enumerate(test_queue):
+    print("current step:",step)
     input = Variable(input, volatile=True).cuda()
+    print("done5")
     target = Variable(target, volatile=True).cuda(async=True)
+    print("done6")
+
 
     logits, _ = model(input)
+    print("done7")
+
     loss = criterion(logits, target)
+    print("done8")
+
 
     prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
     n = input.size(0)
     objs.update(loss.data[0], n)
     top1.update(prec1.data[0], n)
     top5.update(prec5.data[0], n)
+    print("done9")
 
     if step % args.report_freq == 0:
       logging.info('test %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
